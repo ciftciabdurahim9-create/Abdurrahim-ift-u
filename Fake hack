@@ -1,0 +1,205 @@
+# Şaka Virüs - Pydroid 3 yerel sunucu
+# Sayfayı aynı Wi-Fi'deki telefonlara sunar. Başka hiçbir şey yapmaz.
+# Durdurmak için: Pydroid'de sağ alttaki kare (durdur) tuşu.
+
+import socket
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+PORT = 8000
+
+SAYFA = r"""<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sistem Uyarısı</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html,body{height:100%;margin:0;background:#000;color:#0f0;font-family:ui-monospace,Menlo,Consolas,monospace;overflow:hidden}
+#m{position:fixed;inset:0;width:100%;height:100%;opacity:.22;z-index:0}
+#start,#screen,#warn,#joke{position:relative;z-index:1}
+#start{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;padding:24px}
+#start input{background:#111;border:1px solid #0f0;color:#0f0;font:inherit;padding:12px;border-radius:8px;text-align:center;margin-top:14px;width:70%}
+#start button{background:#0f0;color:#000;border:0;font:inherit;font-size:1.1rem;padding:14px 22px;border-radius:8px;margin-top:18px}
+#screen{display:none;height:100%;padding:12px;box-sizing:border-box}
+#top{display:flex;justify-content:space-between;font-size:.72rem;border-bottom:1px solid #0f0;padding-bottom:6px}
+#rec{color:#f33;display:none;animation:blink 1s infinite}
+#info{font-size:.7rem;color:#0cf;margin:6px 0;line-height:1.3;max-height:15%;overflow:hidden}
+#log{white-space:pre-wrap;font-size:.74rem;line-height:1.3;height:42%;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end}
+#stage{margin-top:8px;font-size:.82rem}
+.bar{height:12px;border:1px solid #0f0;margin-top:5px}
+.fill{height:100%;width:0;background:#0f0}
+#cnt{font-size:.78rem;margin-top:6px;color:#fc0}
+#chat{font-size:.85rem;color:#f55;margin-top:8px;min-height:3.5em}
+.red{color:#f33}.yel{color:#fc0}.cy{color:#0cf}
+#warn{display:none;position:fixed;inset:0;background:rgba(110,0,0,.94);color:#fff;text-align:center;flex-direction:column;align-items:center;justify-content:center;padding:20px}
+#warn h1{font-size:1.9rem;margin:0 0 10px;animation:glitch .25s infinite}
+#cd{font-size:5.5rem;color:#ff4040;margin:8px 0}
+#joke{display:none;height:100%;align-items:center;justify-content:center;flex-direction:column;text-align:center;background:#fff;color:#111;padding:24px}
+#joke h1{font-size:3rem;margin:0}
+.flash{animation:flash .5s infinite}.shake{animation:shake .15s infinite}
+.conf{position:fixed;top:-30px;font-size:1.6rem;animation:fall 3s linear forwards;z-index:5}
+@keyframes blink{50%{opacity:0}}
+@keyframes flash{50%{background:#400}}
+@keyframes shake{0%{transform:translate(2px,1px)}50%{transform:translate(-2px,-1px)}100%{transform:translate(1px,-2px)}}
+@keyframes glitch{0%{transform:translate(0)}25%{transform:translate(-4px,2px);color:#0ff}50%{transform:translate(4px,-2px);color:#f0f}100%{transform:translate(0)}}
+@keyframes fall{to{transform:translateY(110vh) rotate(360deg)}}
+</style>
+</head>
+<body>
+<canvas id="m"></canvas>
+<div id="start">
+  <div style="font-size:3rem">⚠️</div>
+  <p>Önemli sistem güncellemesi</p>
+  <input id="nm" placeholder="Adın nedir?" autocomplete="off">
+  <button id="go">Devam Et</button>
+</div>
+<div id="screen">
+  <div id="top"><span id="rec">● REC KAMERA</span><span id="clk"></span><span id="ip"></span></div>
+  <div id="info"></div>
+  <div id="log"></div>
+  <div id="stage"></div>
+  <div class="bar"><div class="fill" id="f1"></div></div>
+  <div class="bar"><div class="fill" id="f2" style="background:#f33"></div></div>
+  <div id="cnt"></div>
+  <div id="chat"></div>
+</div>
+<div id="warn">
+  <h1>⛔ CİHAZ KİLİTLENİYOR ⛔</h1>
+  <div id="wmsg"></div>
+  <div id="cd">15</div>
+  <div>İptal etmek için çok geç...</div>
+</div>
+<div id="joke">
+  <h1>ŞAKA! 😂</h1>
+  <p id="jt">Cihazına hiçbir şey olmadı.<br>Yüzündeki ifade paha biçilmezdi.</p>
+</div>
+<script>
+var $=function(i){return document.getElementById(i)};
+var rnd=function(a,b){return Math.floor(Math.random()*(b-a+1))+a};
+var stop=false,taps=0,name="Dostum",ac=null;
+var files=["IMG_2041.jpg","WhatsApp_Sohbet.db","sifreler.txt","kamera_rulosu.zip","Mesajlar.sqlite","rehber.vcf","banka_bilgi.pdf","video_0387.mp4","notlar.docx","Galeri/2024/","Indirilenler/","ses_kaydi.m4a","tarayici_gecmisi.db","Instagram_oturum.json","okul_odevi.pdf"];
+function hex(n){var s="";for(var i=0;i<(n||14);i++)s+=("0"+rnd(0,255).toString(16)).slice(-2)+" ";return s}
+function S(ms){return new Promise(function(res,rej){setTimeout(function(){stop?rej("stop"):res()},ms)})}
+function beep(f,d){try{if(!ac)ac=new (window.AudioContext||window.webkitAudioContext)();var o=ac.createOscillator(),g=ac.createGain();o.frequency.value=f;o.type="square";g.gain.value=.05;o.connect(g);g.connect(ac.destination);o.start();setTimeout(function(){o.stop()},d)}catch(e){}}
+function vib(p){try{navigator.vibrate&&navigator.vibrate(p)}catch(e){}}
+/* matrix yağmuru */
+var cv=$("m"),cx=cv.getContext("2d"),cols,drops;
+function rs(){cv.width=innerWidth;cv.height=innerHeight;cols=Math.floor(cv.width/14);drops=[];for(var i=0;i<cols;i++)drops[i]=rnd(0,40)}
+rs();addEventListener("resize",rs);
+setInterval(function(){cx.fillStyle="rgba(0,0,0,.12)";cx.fillRect(0,0,cv.width,cv.height);cx.fillStyle="#0f0";cx.font="14px monospace";
+for(var i=0;i<cols;i++){cx.fillText(String.fromCharCode(0x30A0+rnd(0,95)),i*14,drops[i]*14);if(drops[i]*14>cv.height&&Math.random()>.975)drops[i]=0;drops[i]++}},60);
+/* log */
+function add(t){var l=$("log");l.innerHTML+=t+"\n";var a=l.innerHTML.split("\n");if(a.length>22)l.innerHTML=a.slice(-22).join("\n")}
+function bar(id,p){$(id).style.width=p+"%"}
+async function fillBar(id,ms){for(var i=0;i<=100;i+=5){bar(id,i);await S(ms/20)}}
+async function typeTo(el,t){el.textContent="";for(var i=0;i<t.length;i++){el.textContent+=t[i];if(i%3==0)beep(900,15);await S(55)}}
+function gather(){
+  var i=[],n=navigator;
+  i.push("CİHAZ: "+(n.platform||"?")+" | DİL: "+(n.language||"?"));
+  i.push("EKRAN: "+screen.width+"x"+screen.height+" | ÇEKİRDEK: "+(n.hardwareConcurrency||"?"));
+  i.push("TARAYICI: "+(n.userAgent||"").slice(0,70));
+  i.push("BAĞLANTI: "+(n.onLine?"ÇEVRİMİÇİ":"ÇEVRİMDIŞI"));
+  $("info").innerHTML=i.map(function(x){return "<div>"+x.replace(/</g,"")+"</div>"}).join("");
+  $("ip").textContent="IP "+rnd(31,201)+"."+rnd(1,254)+"."+rnd(1,254)+"."+rnd(1,254);
+}
+function clock(){$("clk").textContent=new Date().toLocaleTimeString("tr-TR")}
+var stages=[
+ ["1/8 Cihaz taranıyor",["> önyükleme sektörü okunuyor","> çekirdek belleğe sızıldı","<span class='yel'>> güvenlik duvarı devre dışı</span>","> kök erişim: <span class='red'>ALINDI</span>"]],
+ ["2/8 Ağ dinleniyor",["> Wi-Fi paketleri yakalanıyor","> DNS yönlendirmesi değiştirildi","> modem yönetici paneli: ele geçirildi","<span class='yel'>> aynı ağdaki cihazlar taranıyor...</span>"]],
+ ["3/8 Kimlik bilgileri çalınıyor",["> tarayıcı şifreleri okunuyor","> çerezler kopyalandı","<span class='red'>> UYARI: yetkisiz erişim!</span>","> parolalar: ********","> 2 adımlı doğrulama atlatıldı"]],
+ ["4/8 Sosyal hesaplar",["> Instagram oturumu devralındı","> WhatsApp yedeği indiriliyor","> mesaj geçmişi: 14.382 kayıt","<span class='yel'>> rehberdeki herkese mesaj hazırlanıyor</span>"]],
+ ["5/8 Kamera ve mikrofon",["> kamera sürücüsü yükleniyor","<span class='red'>> KAMERA AKTİF</span>","> mikrofon dinleniyor...","> ses kaydı başladı"]],
+ ["6/8 Dosyalar şifreleniyor",[]],
+ ["7/8 Yedekler siliniyor",["> bulut yedeği bulundu","<span class='red'>> yedek siliniyor...</span>","<span class='red'>> geri yükleme noktası yok edildi</span>"]],
+ ["8/8 Sistem çöküyor",["<span class='red'>> KRİTİK HATA 0x80FF2A</span>","<span class='red'>> bellek taşması</span>","<span class='red'>> çekirdek paniği</span>","<span class='red'>> geri alma BAŞARISIZ</span>"]]
+];
+async function main(){
+  gather();clock();setInterval(clock,1000);
+  for(var si=0;si<stages.length;si++){
+    var st=stages[si];
+    $("stage").textContent="AŞAMA "+st[0];bar("f1",0);bar("f2",Math.round(si/stages.length*100));
+    document.body.className=(si==4||si==7)?"shake":(si==5?"flash":"");
+    if(si==4)$("rec").style.display="inline";
+    if(si==5){
+      for(var k=1;k<=40;k++){
+        add("> şifreleniyor: "+files[rnd(0,files.length-1)]);add(hex(16));
+        $("cnt").textContent="Şifrelenen dosya: "+(k*rnd(31,37))+" / 1.462";
+        bar("f1",Math.round(k/40*100));if(k%8==0)beep(300,60);await S(150);
+      }
+    }else{
+      for(var li=0;li<st[1].length;li++){
+        for(var h=0;h<rnd(1,3);h++)add(hex());
+        add(st[1][li]);beep(rnd(400,700),40);bar("f1",Math.round((li+1)/st[1].length*100));await S(750);
+      }
+    }
+    await S(300);
+  }
+  bar("f2",100);document.body.className="";
+  /* "hacker" sohbeti */
+  var c=$("chat"),msgs=["> merhaba "+name+"...","> seni görüyoruz.","> telefonundaki her şey bizde.","> artık çok geç."];
+  for(var m=0;m<msgs.length;m++){await typeTo(c,msgs[m]);vib(120);await S(900)}
+  warn();
+}
+function warn(){
+  $("warn").style.display="flex";document.body.className="flash shake";
+  $("wmsg").textContent=name+", tüm fotoğraflar ve mesajlar silinecek";
+  vib([300,150,300,150,600]);
+  var n=15;window._c=setInterval(function(){
+    n--;$("cd").textContent=n;beep(n<6?1200:700,200);vib(200);
+    if(n<=0){clearInterval(window._c);showJoke()}
+  },1000);
+}
+function showJoke(){
+  stop=true;clearInterval(window._c);document.body.className="";
+  $("screen").style.display="none";$("warn").style.display="none";$("joke").style.display="flex";
+  document.body.style.background="#fff";$("m").style.display="none";
+  $("jt").innerHTML=name+", cihazına hiçbir şey olmadı.<br>Yüzündeki ifade paha biçilmezdi.";
+  vib(0);var e=["🎉","😂","🎈","✨","🤡"];
+  for(var i=0;i<40;i++){var d=document.createElement("div");d.className="conf";d.textContent=e[rnd(0,4)];d.style.left=rnd(0,95)+"vw";d.style.animationDelay=(Math.random()*1.5)+"s";document.body.appendChild(d)}
+}
+$("go").onclick=function(){
+  var v=$("nm").value.trim();if(v)name=v.slice(0,20).replace(/</g,"");
+  try{document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen()}catch(e){}
+  beep(200,100);
+  $("start").style.display="none";$("screen").style.display="block";
+  main().catch(function(){});
+};
+document.addEventListener("click",function(){if($("screen").style.display==="block"||$("warn").style.display==="flex"){taps++;if(taps>=8)showJoke()}});
+</script>
+</body>
+</html>
+"""
+
+
+class Isleyici(BaseHTTPRequestHandler):
+    def do_GET(self):
+        veri = SAYFA.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(veri)))
+        self.end_headers()
+        self.wfile.write(veri)
+
+    def log_message(self, *args):
+        pass
+
+
+def ip_bul():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("8.8.8.8", 80))
+        return s.getsockname()[0]
+    except Exception:
+        return "IP bulunamadi"
+    finally:
+        s.close()
+
+
+ip = ip_bul()
+print("Sunucu açık!")
+print("Kendi telefonunda aç : http://localhost:%d" % PORT)
+print("Arkadaşın için adres : http://%s:%d" % (ip, PORT))
+print("(Aynı Wi-Fi'de olmanız gerekir. Durdurmak için ■ tuşuna bas.)")
+
+HTTPServer(("0.0.0.0", PORT), Isleyici).serve_forever()
